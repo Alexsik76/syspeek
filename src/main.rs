@@ -1,3 +1,7 @@
+mod metrics;
+
+use metrics::SystemMetrics;
+
 use crossterm::{
     event::{self, Event, KeyCode},
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
@@ -18,9 +22,13 @@ fn main() -> Result<()> {
     stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
+    // 1.1. Get data
+    let metrics = SystemMetrics::fetch();
+
     // 2. Draw UI
     terminal.draw(|frame| {
-        let text = Paragraph::new("CPU: 15%\nRAM: 3.2 GB / 16.0 GB")
+        let content = format!("CPU: {}%\nRAM: {}", metrics.cpu_usage, metrics.memory_usage);
+        let text = Paragraph::new(content)
             .style(Style::default().fg(Color::Cyan))
             .block(
                 Block::default()
