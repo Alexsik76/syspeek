@@ -2,6 +2,9 @@
 name = "syspeek"
 version = "0.1.0"
 edition = "2024"
+description = "A lightweight terminal system monitor"
+repository = "https://github.com/Alexsik76/syspeek"
+license = "MIT"
 
 [dependencies]
 crossterm = "0.29.0"
