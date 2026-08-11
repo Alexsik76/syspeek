@@ -44,7 +44,7 @@ mod tests {
     fn test_metrics_fetch() {
         let mut collector = MetricsCollector::new();
         let metrics = collector.fetch();
-        
+
         assert!(metrics.cpu_usage <= 100);
         assert!(!metrics.memory_usage.is_empty());
     }

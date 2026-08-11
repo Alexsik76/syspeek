@@ -1,23 +1,21 @@
 mod metrics;
+mod terminal;
 
+use crossterm::event::{self, Event as CEvent, KeyCode};
 use metrics::MetricsCollector;
-use crossterm::{
-    event::{self, Event as CEvent, KeyCode},
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-    ExecutableCommand,
-};
 use ratatui::{
+    Frame, Terminal,
     backend::CrosstermBackend,
     style::{Color, Style},
     widgets::{Block, Borders, Paragraph},
-    Frame, Terminal,
 };
 use std::{
-    io::{stdout, Result},
+    io::{Result, stdout},
     sync::mpsc,
     thread,
     time::Duration,
 };
+use terminal::TerminalGuard;
 
 enum AppEvent {
     Tick,
@@ -25,25 +23,28 @@ enum AppEvent {
 }
 
 fn main() -> Result<()> {
-    stdout().execute(EnterAlternateScreen)?;
-    enable_raw_mode()?;
+    let _terminal_guard = TerminalGuard::new()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
 
     let (tx, rx) = mpsc::channel();
 
     let tick_tx = tx.clone();
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(1));
-        if tick_tx.send(AppEvent::Tick).is_err() {
-            break;
+    thread::spawn(move || {
+        loop {
+            thread::sleep(Duration::from_secs(1));
+            if tick_tx.send(AppEvent::Tick).is_err() {
+                break;
+            }
         }
     });
 
     let input_tx = tx.clone();
-    thread::spawn(move || loop {
-        if let Ok(CEvent::Key(key)) = event::read() {
-            if input_tx.send(AppEvent::Key(key.code)).is_err() {
-                break;
+    thread::spawn(move || {
+        loop {
+            if let Ok(CEvent::Key(key)) = event::read() {
+                if input_tx.send(AppEvent::Key(key.code)).is_err() {
+                    break;
+                }
             }
         }
     });
@@ -64,8 +65,6 @@ fn main() -> Result<()> {
         }
     }
 
-    stdout().execute(LeaveAlternateScreen)?;
-    disable_raw_mode()?;
     Ok(())
 }
 
