@@ -1,5 +1,5 @@
 use std::fmt;
-use sysinfo::System;
+use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
 /// Used vs. total RAM, in bytes. Displayed in GB via its `Display` impl so
 /// callers can format it without allocating an intermediate `String`.
@@ -21,12 +21,17 @@ impl fmt::Display for MemoryUsage {
 }
 
 pub struct SystemMetrics {
-    pub cpu_usage: f32,
+    /// `None` until two samples at least `sysinfo::MINIMUM_CPU_UPDATE_INTERVAL`
+    /// apart have been taken; sysinfo needs that pair to compute a meaningful
+    /// usage delta, so the very first sample is otherwise meaningless rather
+    /// than genuinely 0%.
+    pub cpu_usage: Option<f32>,
     pub memory: MemoryUsage,
 }
 
 pub struct MetricsCollector {
     system: System,
+    has_cpu_baseline: bool,
 }
 
 impl Default for MetricsCollector {
@@ -37,17 +42,29 @@ impl Default for MetricsCollector {
 
 impl MetricsCollector {
     pub fn new() -> Self {
-        let mut system = System::new_all();
-        system.refresh_all();
-        Self { system }
+        let refresh_kind = RefreshKind::nothing()
+            .with_cpu(CpuRefreshKind::nothing().with_cpu_usage())
+            .with_memory(MemoryRefreshKind::nothing().with_ram());
+        let system = System::new_with_specifics(refresh_kind);
+        Self {
+            system,
+            has_cpu_baseline: false,
+        }
     }
 
     pub fn fetch(&mut self) -> SystemMetrics {
         self.system.refresh_cpu_usage();
         self.system.refresh_memory();
 
+        let cpu_usage = if self.has_cpu_baseline {
+            Some(self.system.global_cpu_usage())
+        } else {
+            self.has_cpu_baseline = true;
+            None
+        };
+
         SystemMetrics {
-            cpu_usage: self.system.global_cpu_usage(),
+            cpu_usage,
             memory: MemoryUsage {
                 used_bytes: self.system.used_memory(),
                 total_bytes: self.system.total_memory(),
@@ -61,12 +78,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_metrics_fetch() {
+    fn first_fetch_reports_cpu_unavailable() {
         let mut collector = MetricsCollector::new();
         let metrics = collector.fetch();
 
-        assert!((0.0..=100.0).contains(&metrics.cpu_usage));
+        assert_eq!(metrics.cpu_usage, None);
         assert!(metrics.memory.total_bytes > 0);
+    }
+
+    #[test]
+    fn second_fetch_after_minimum_interval_reports_cpu_usage() {
+        let mut collector = MetricsCollector::new();
+        collector.fetch();
+        std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+        let metrics = collector.fetch();
+
+        assert!(
+            metrics
+                .cpu_usage
+                .is_some_and(|cpu| (0.0..=100.0).contains(&cpu))
+        );
     }
 
     #[test]

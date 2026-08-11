@@ -80,11 +80,13 @@ fn main() -> Result<()> {
 
 fn draw_ui(frame: &mut Frame, metrics: &metrics::SystemMetrics, render_buf: &mut String) {
     render_buf.clear();
-    let _ = write!(
-        render_buf,
-        "CPU: {:.0}%\nRAM: {}",
-        metrics.cpu_usage, metrics.memory
-    );
+    match metrics.cpu_usage {
+        Some(cpu) => {
+            let _ = write!(render_buf, "CPU: {cpu:.0}%");
+        }
+        None => render_buf.push_str("CPU: N/A"),
+    }
+    let _ = write!(render_buf, "\nRAM: {}", metrics.memory);
     let text = Paragraph::new(render_buf.as_str())
         .style(Style::default().fg(Color::Cyan))
         .block(
