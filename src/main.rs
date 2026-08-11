@@ -14,7 +14,7 @@ use std::{
     io::{Result, stdout},
     sync::mpsc,
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use terminal::TerminalGuard;
 
@@ -36,8 +36,14 @@ fn main() -> Result<()> {
 
     let tick_tx = tx.clone();
     thread::spawn(move || {
+        let tick_period = Duration::from_secs(1);
+        let mut next_tick = Instant::now() + tick_period;
         loop {
-            thread::sleep(Duration::from_secs(1));
+            let now = Instant::now();
+            if next_tick > now {
+                thread::sleep(next_tick - now);
+            }
+            next_tick += tick_period;
             if tick_tx.send(AppEvent::Tick).is_err() {
                 break;
             }
