@@ -24,8 +24,11 @@ enum AppEvent {
 }
 
 fn is_exit_key(key: KeyEvent) -> bool {
-    key.code == KeyCode::Char('q')
-        || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
+    match key.code {
+        KeyCode::Char('q' | 'Q' | 'й' | 'Й') | KeyCode::Esc => true,
+        KeyCode::Char('c' | 'C' | 'с' | 'С') => key.modifiers.contains(KeyModifiers::CONTROL),
+        _ => false,
+    }
 }
 
 fn main() -> Result<()> {
@@ -53,13 +56,14 @@ fn main() -> Result<()> {
     let input_tx = tx.clone();
     thread::spawn(move || {
         loop {
-            if let Ok(CEvent::Key(key)) = event::read() {
-                if key.kind != KeyEventKind::Press {
-                    continue;
+            match event::read() {
+                Ok(CEvent::Key(key)) if key.kind == KeyEventKind::Press => {
+                    if input_tx.send(AppEvent::Key(key)).is_err() {
+                        break;
+                    }
                 }
-                if input_tx.send(AppEvent::Key(key)).is_err() {
-                    break;
-                }
+                Ok(_) => {}
+                Err(_) => break,
             }
         }
     });
@@ -77,7 +81,8 @@ fn main() -> Result<()> {
                 metrics = collector.fetch();
                 terminal.draw(|frame| draw_ui(frame, &metrics, &mut render_buf))?;
             }
-            _ => {}
+            Ok(AppEvent::Key(_)) => {}
+            Err(_) => break,
         }
     }
 
@@ -98,7 +103,7 @@ fn draw_ui(frame: &mut Frame, metrics: &metrics::SystemMetrics, render_buf: &mut
         .block(
             Block::default()
                 .title(" Syspeek ")
-                .title_bottom(" [q] Exit ")
+                .title_bottom(" [q/Esc] Exit ")
                 .borders(Borders::ALL),
         );
     frame.render_widget(text, frame.area());

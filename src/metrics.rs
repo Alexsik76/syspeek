@@ -1,5 +1,8 @@
 use std::fmt;
-use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+use std::time::Instant;
+use sysinfo::{
+    CpuRefreshKind, MINIMUM_CPU_UPDATE_INTERVAL, MemoryRefreshKind, RefreshKind, System,
+};
 
 /// Used vs. total RAM, in bytes. Displayed in GB via its `Display` impl so
 /// callers can format it without allocating an intermediate `String`.
@@ -31,7 +34,7 @@ pub struct SystemMetrics {
 
 pub struct MetricsCollector {
     system: System,
-    has_cpu_baseline: bool,
+    last_cpu_refresh: Option<Instant>,
 }
 
 impl Default for MetricsCollector {
@@ -48,20 +51,28 @@ impl MetricsCollector {
         let system = System::new_with_specifics(refresh_kind);
         Self {
             system,
-            has_cpu_baseline: false,
+            last_cpu_refresh: None,
         }
     }
 
     pub fn fetch(&mut self) -> SystemMetrics {
-        self.system.refresh_cpu_usage();
-        self.system.refresh_memory();
+        let now = Instant::now();
+        let interval_elapsed = self
+            .last_cpu_refresh
+            .is_none_or(|last| now.duration_since(last) >= MINIMUM_CPU_UPDATE_INTERVAL);
 
-        let cpu_usage = if self.has_cpu_baseline {
-            Some(self.system.global_cpu_usage())
+        let cpu_usage = if interval_elapsed {
+            self.system.refresh_cpu_usage();
+            let usage = self
+                .last_cpu_refresh
+                .map(|_| self.system.global_cpu_usage());
+            self.last_cpu_refresh = Some(now);
+            usage
         } else {
-            self.has_cpu_baseline = true;
             None
         };
+
+        self.system.refresh_memory();
 
         SystemMetrics {
             cpu_usage,
@@ -98,6 +109,15 @@ mod tests {
                 .cpu_usage
                 .is_some_and(|cpu| (0.0..=100.0).contains(&cpu))
         );
+    }
+
+    #[test]
+    fn second_fetch_before_minimum_interval_reports_cpu_unavailable() {
+        let mut collector = MetricsCollector::new();
+        collector.fetch();
+        let metrics = collector.fetch();
+
+        assert_eq!(metrics.cpu_usage, None);
     }
 
     #[test]
