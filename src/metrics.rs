@@ -1,8 +1,28 @@
+use std::fmt;
 use sysinfo::System;
 
+/// Used vs. total RAM, in bytes. Displayed in GB via its `Display` impl so
+/// callers can format it without allocating an intermediate `String`.
+pub struct MemoryUsage {
+    pub used_bytes: u64,
+    pub total_bytes: u64,
+}
+
+impl fmt::Display for MemoryUsage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        const BYTES_PER_GB: f64 = 1_073_741_824.0;
+        write!(
+            f,
+            "{:.1} GB / {:.1} GB",
+            self.used_bytes as f64 / BYTES_PER_GB,
+            self.total_bytes as f64 / BYTES_PER_GB
+        )
+    }
+}
+
 pub struct SystemMetrics {
-    pub cpu_usage: u8,
-    pub memory_usage: String,
+    pub cpu_usage: f32,
+    pub memory: MemoryUsage,
 }
 
 pub struct MetricsCollector {
@@ -26,16 +46,16 @@ impl MetricsCollector {
         self.system.refresh_cpu_usage();
         self.system.refresh_memory();
 
-        let cpu = self.system.global_cpu_usage() as u8;
-        let mem_used = self.system.used_memory() as f64 / 1_073_741_824.0;
-        let mem_total = self.system.total_memory() as f64 / 1_073_741_824.0;
-
         SystemMetrics {
-            cpu_usage: cpu,
-            memory_usage: format!("{:.1} GB / {:.1} GB", mem_used, mem_total),
+            cpu_usage: self.system.global_cpu_usage(),
+            memory: MemoryUsage {
+                used_bytes: self.system.used_memory(),
+                total_bytes: self.system.total_memory(),
+            },
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,7 +65,17 @@ mod tests {
         let mut collector = MetricsCollector::new();
         let metrics = collector.fetch();
 
-        assert!(metrics.cpu_usage <= 100);
-        assert!(!metrics.memory_usage.is_empty());
+        assert!((0.0..=100.0).contains(&metrics.cpu_usage));
+        assert!(metrics.memory.total_bytes > 0);
+    }
+
+    #[test]
+    fn memory_usage_display_formats_as_gigabytes() {
+        let usage = MemoryUsage {
+            used_bytes: 1_073_741_824,
+            total_bytes: 2_147_483_648,
+        };
+
+        assert_eq!(usage.to_string(), "1.0 GB / 2.0 GB");
     }
 }

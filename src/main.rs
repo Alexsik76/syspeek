@@ -10,6 +10,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph},
 };
 use std::{
+    fmt::Write as _,
     io::{Result, stdout},
     sync::mpsc,
     thread,
@@ -59,15 +60,16 @@ fn main() -> Result<()> {
 
     let mut collector = MetricsCollector::new();
     let mut metrics = collector.fetch();
+    let mut render_buf = String::new();
 
-    terminal.draw(|frame| draw_ui(frame, &metrics))?;
+    terminal.draw(|frame| draw_ui(frame, &metrics, &mut render_buf))?;
 
     loop {
         match rx.recv() {
             Ok(AppEvent::Key(key)) if is_exit_key(key) => break,
             Ok(AppEvent::Tick) => {
                 metrics = collector.fetch();
-                terminal.draw(|frame| draw_ui(frame, &metrics))?;
+                terminal.draw(|frame| draw_ui(frame, &metrics, &mut render_buf))?;
             }
             _ => {}
         }
@@ -76,9 +78,14 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn draw_ui(frame: &mut Frame, metrics: &metrics::SystemMetrics) {
-    let content = format!("CPU: {}%\nRAM: {}", metrics.cpu_usage, metrics.memory_usage);
-    let text = Paragraph::new(content)
+fn draw_ui(frame: &mut Frame, metrics: &metrics::SystemMetrics, render_buf: &mut String) {
+    render_buf.clear();
+    let _ = write!(
+        render_buf,
+        "CPU: {:.0}%\nRAM: {}",
+        metrics.cpu_usage, metrics.memory
+    );
+    let text = Paragraph::new(render_buf.as_str())
         .style(Style::default().fg(Color::Cyan))
         .block(
             Block::default()
