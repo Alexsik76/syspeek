@@ -1,7 +1,7 @@
 mod metrics;
 mod terminal;
 
-use crossterm::event::{self, Event as CEvent, KeyCode};
+use crossterm::event::{self, Event as CEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use metrics::MetricsCollector;
 use ratatui::{
     Frame, Terminal,
@@ -19,7 +19,12 @@ use terminal::TerminalGuard;
 
 enum AppEvent {
     Tick,
-    Key(KeyCode),
+    Key(KeyEvent),
+}
+
+fn is_exit_key(key: KeyEvent) -> bool {
+    key.code == KeyCode::Char('q')
+        || (key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
 }
 
 fn main() -> Result<()> {
@@ -42,7 +47,10 @@ fn main() -> Result<()> {
     thread::spawn(move || {
         loop {
             if let Ok(CEvent::Key(key)) = event::read() {
-                if input_tx.send(AppEvent::Key(key.code)).is_err() {
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                if input_tx.send(AppEvent::Key(key)).is_err() {
                     break;
                 }
             }
@@ -56,7 +64,7 @@ fn main() -> Result<()> {
 
     loop {
         match rx.recv() {
-            Ok(AppEvent::Key(KeyCode::Char('q'))) => break,
+            Ok(AppEvent::Key(key)) if is_exit_key(key) => break,
             Ok(AppEvent::Tick) => {
                 metrics = collector.fetch();
                 terminal.draw(|frame| draw_ui(frame, &metrics))?;
